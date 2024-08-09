@@ -26,6 +26,11 @@ async function sendNotificationAndUpdateDocuments(alertTableId, alertStatusID) {
 
         console.log(`Notification sent and documents updated for AlertTable ID: ${alertTableId} and AlertStatus ID: ${alertStatusID}`);
     } catch (error) {
+        await db.collection('CronJobLogs').add({
+            "CronJobLogs":"Failed",
+            "TimeOfCronLog":DateTime.now().toISO(),
+            "Error":error
+        });
         console.error(`Error updating documents ${alertTableId} and ${alertStatusID}:`, error);
         throw error; // Re-throw to be caught by the calling function
     }
@@ -89,7 +94,30 @@ async function processDocuments() {
 
         return results;
     } catch (error) {
+        await db.collection('CronJobLogs').add({
+            "CronJobLogs":"Failed",
+            "TimeOfCronLog":DateTime.now().toISO(),
+            "Error":error
+        });
         console.error('Error processing documents:', error);
+        throw error; // Re-throw to be caught by the calling function
+    }
+}
+
+async function addCronJobLog() {
+    try {
+        await db.collection('CronJobLogs').add({
+            "CronJobLogs":"Success",
+            "TimeOfCronLog":DateTime.now().toISO()
+        });
+
+        console.log(`CronJob Success at : ${DateTime.now().toISO()} and AlertStatus ID: ${DateTime.now().toISO()}`);
+    } catch (error) {
+        await db.collection('CronJobLogs').add({
+            "CronJobLogs":"Failed",
+            "TimeOfCronLog":DateTime.now().toISO(),
+            "Error":error
+        });
         throw error; // Re-throw to be caught by the calling function
     }
 }
@@ -97,12 +125,18 @@ async function processDocuments() {
 app.get('/', async (req, res) => {
     try {
         const results = await processDocuments();
+        const cronJobLogResult  = await addCronJobLog();
         return res.status(200).json({
             message: 'CronJob Successful',
             time: DateTime.now().toISO(),
             processedAlerts: results,
         });
     } catch (error) {
+        await db.collection('CronJobLogs').add({
+            "CronJobLogs":"Failed",
+            "TimeOfCronLog":DateTime.now().toISO(),
+            "Error":error
+        });
         return res.status(500).json({ error: 'An error occurred while processing alerts.' });
     }
 });
