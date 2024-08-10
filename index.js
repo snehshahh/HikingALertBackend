@@ -2,7 +2,7 @@ const express = require('express');
 const admin = require('firebase-admin');
 const { DateTime } = require('luxon'); // Importing Luxon for date handling
 const fs = require('fs'); // Import fs module to write logs to a file
-const schedule = require('node-schedule'); // Import node-schedule
+const path = require('path');
 
 // Initialize Firebase Admin SDK
 const serviceAccount = require('./hikingalert-260bf-firebase-adminsdk-8rkbb-24973cba1e.json');
@@ -56,11 +56,7 @@ async function processDocuments() {
         // Get the current time using Luxon for better readability
         const currentTime = DateTime.now();
 
-        // Prepare an array to hold promises for fetching related documents
-        const relatedDocPromises = [];
-
-        // Process each document in AlertTable
-        snapshot.docs.forEach(doc => {
+        for (const doc of snapshot.docs) {
             const docData = doc.data();
             const timestamp = docData.ReturnTimestamp?.toDate(); // Convert Firestore Timestamp to Date
             const returnDate = docData.ReturnDate?.toDate(); // Convert Firestore Timestamp to Date
@@ -77,35 +73,25 @@ async function processDocuments() {
                     const alertStatusID = docData.AlertStatusID; // Assuming alertStatusID is the field name
 
                     if (alertStatusID) {
-                        // Add the promise to the array
-                        relatedDocPromises.push(db.collection(relatedCollectionName).doc(alertStatusID).get().then(relatedDoc => ({
-                            docId: doc.id,
-                            relatedDoc,
-                            returnDate
-                        })));
+                        // Fetch the document from AlertStatusTable
+                        const relatedDoc = await db.collection(relatedCollectionName).doc(alertStatusID).get();
+
+                        if (relatedDoc.exists) {
+                            const relatedData = relatedDoc.data();
+
+                            // Check if ReturnDate is present and after the current time
+                            if (relatedData.Status === "Pending" && returnDate && returnDate > currentTime.toJSDate()) {
+                                await sendNotificationAndUpdateDocuments(doc.id, relatedDoc.id);
+                            }
+                        } else {
+                            writeLog(`Related document with ID ${alertStatusID} does not exist.`);
+                        }
                     } else {
                         writeLog('No alertStatusID provided.');
                     }
                 }
             }
-        });
-
-        // Wait for all related documents to be fetched
-        const relatedDocs = await Promise.all(relatedDocPromises);
-
-        // Process each related document
-        relatedDocs.forEach(({ docId, relatedDoc, returnDate }) => {
-            if (relatedDoc.exists) {
-                const relatedData = relatedDoc.data();
-
-                // Check if ReturnDate is present and after the current time
-                if (relatedData.Status === "Pending" && returnDate && returnDate > currentTime.toJSDate()) {
-                    sendNotificationAndUpdateDocuments(docId, relatedDoc.id);
-                }
-            } else {
-                writeLog(`Related document does not exist for document ID ${docId}.`);
-            }
-        });
+        }
 
         return 'OK'; // Return a simple message indicating success
     } catch (error) {
@@ -137,17 +123,6 @@ async function addCronJobLog() {
         throw error; // Re-throw to be caught by the calling function
     }
 }
-
-// Schedule the job to run every 15 minutes
-schedule.scheduleJob('*/2 * * * *', async () => {
-    try {
-        const results = await processDocuments();
-        await addCronJobLog();
-        writeLog('Scheduled job executed successfully.');
-    } catch (error) {
-        writeLog(`Scheduled job failed: ${error.message}`);
-    }
-});
 
 app.get('/', async (req, res) => {
     try {
