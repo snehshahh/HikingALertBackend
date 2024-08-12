@@ -20,92 +20,90 @@ function writeLog(message) {
     fs.appendFileSync('cronjob.log', logMessage); // Write log message to cronjob.log
 }
 
-// Function to send a notification and update documents
-async function sendNotificationAndUpdateDocuments(alertTableId, alertStatusID) {
+// Function to send a notification, update the document, and log emergency contacts
+// Function to send a notification, update the document, and log emergency contacts
+async function sendNotificationAndUpdateDocuments(alertTableId) {
     try {
+        // Update the AlertTable document
         await db.collection('AlertTable').doc(alertTableId).update({
             AlertedTimestamp: new Date(),
+            isAlertSent: true,
         });
 
-        await db.collection('AlertStatusTable').doc(alertStatusID).update({
-            Status: "Alerted",
-        });
+        // Retrieve the emergency contacts from EmergencyContactTable using the document ID
+        const emergencyContactsDoc = await db.collection('EmergencyContactTable').doc(alertTableId).get();
 
-        writeLog(`Notification sent and documents updated for AlertTable ID: ${alertTableId} and AlertStatus ID: ${alertStatusID}`);
+        if (emergencyContactsDoc.exists) {
+            const emergencyContactsData = emergencyContactsDoc.data();
+
+            // Log for EmergencyContact1
+            if (emergencyContactsData.EmergencyContact1) {
+                writeLog(`Notification sent to ${emergencyContactsData.EmergencyContact1}  for AlertTable ID: ${alertTableId}`);
+            }
+
+            // Log for EmergencyContact2
+            if (emergencyContactsData.EmergencyContact2) {
+                writeLog(`Notification sent to ${emergencyContactsData.EmergencyContact2.Name}  for AlertTable ID: ${alertTableId}`);
+            }
+
+            // If no contacts found
+            if (!emergencyContactsData.EmergencyContact1 && !emergencyContactsData.EmergencyContact2) {
+                writeLog(`No emergency contacts found for AlertTable ID: ${alertTableId}`);
+            }
+        } else {
+            writeLog(`EmergencyContactTable document does not exist for AlertTable ID: ${alertTableId}`);
+        }
+
+        // Write a general log for notification sent
+        writeLog(`Notification sent and document updated for AlertTable ID: ${alertTableId}`);
     } catch (error) {
         await db.collection('CronJobLogs').add({
             "CronJobLogs": "Failed",
             "TimeOfCronLog": DateTime.now().toISO(),
             "Error": error.message // Log the error message
         });
-        writeLog(`Error updating documents ${alertTableId} and ${alertStatusID}: ${error.message}`);
+        writeLog(`Error updating document ${alertTableId}: ${error.message}`);
         throw error; // Re-throw to be caught by the calling function
     }
 }
 
+
+
+// Function to check document status and send notifications if necessary
 // Function to check document status and send notifications if necessary
 async function processDocuments() {
     const collectionName = 'AlertTable';
-    const relatedCollectionName = 'AlertStatusTable';
 
     try {
         // Get all documents in the AlertTable collection
         const collectionRef = db.collection(collectionName);
         const snapshot = await collectionRef.get();
 
-        // Get the current time using Luxon for better readability
-        const currentTime = DateTime.now();
-
-        // Prepare an array to hold promises for fetching related documents
-        const relatedDocPromises = [];
-
         // Process each document in AlertTable
-        snapshot.docs.forEach(doc => {
+        for (const doc of snapshot.docs) {
             const docData = doc.data();
-            const timestamp = docData.ReturnTimestamp?.toDate(); // Convert Firestore Timestamp to Date
-            const returnDate = docData.ReturnDate?.toDate(); // Convert Firestore Timestamp to Date
+            const returnTimestamp = docData.ReturnTimestamp?.toDate(); // Convert Firestore Timestamp to Date
+            const isAlertSent = docData.isAlertSent;
 
-            if (timestamp) {
-                // Calculate the difference in minutes using Luxon
-                const diffInMinutes = currentTime.diff(DateTime.fromJSDate(timestamp), 'minutes').minutes;
+            if (!isAlertSent && returnTimestamp) {
+                // Convert ReturnTimestamp to ISO format
+                const returnISO = DateTime.fromJSDate(returnTimestamp).toISO();
+                
+                // Get the current time in ISO format
+                const currentISO = DateTime.now().toISO();
 
-                // Check if the timestamp is more than 60 minutes old
+                // Calculate the difference in minutes
+                const diffInMinutes = DateTime.fromISO(currentISO).diff(DateTime.fromISO(returnISO), 'minutes').minutes;
+
+                // Check if the difference is more than 60 minutes
                 if (diffInMinutes > 60) {
                     writeLog(`Document ID ${doc.id} is late by ${diffInMinutes} minutes.`);
 
-                    // Fetch related document using alertStatusID
-                    const alertStatusID = docData.AlertStatusID; // Assuming alertStatusID is the field name
-
-                    if (alertStatusID) {
-                        // Add the promise to the array
-                        relatedDocPromises.push(db.collection(relatedCollectionName).doc(alertStatusID).get().then(relatedDoc => ({
-                            docId: doc.id,
-                            relatedDoc,
-                            returnDate
-                        })));
-                    } else {
-                        writeLog('No alertStatusID provided.');
-                    }
+                    // Send notification and update the document
+                    await sendNotificationAndUpdateDocuments(doc.id);
                 }
             }
-        });
-
-        // Wait for all related documents to be fetched
-        const relatedDocs = await Promise.all(relatedDocPromises);
-
-        // Process each related document
-        relatedDocs.forEach(({ docId, relatedDoc, returnDate }) => {
-            if (relatedDoc.exists) {
-                const relatedData = relatedDoc.data();
-
-                // Check if ReturnDate is present and after the current time
-                if (relatedData.Status === "Pending" && returnDate && returnDate > currentTime.toJSDate()) {
-                    sendNotificationAndUpdateDocuments(docId, relatedDoc.id);
-                }
-            } else {
-                writeLog(`Related document does not exist for document ID ${docId}.`);
-            }
-        });
+        }
 
         return 'OK'; // Return a simple message indicating success
     } catch (error) {
@@ -118,6 +116,7 @@ async function processDocuments() {
         return 'Error'; // Return a simple error message
     }
 }
+
 
 async function addCronJobLog() {
     try {
@@ -139,7 +138,7 @@ async function addCronJobLog() {
 }
 
 // Schedule the job to run every 15 minutes
-schedule.scheduleJob('*/2 * * * *', async () => {
+schedule.scheduleJob('*/15 * * * *', async () => {
     try {
         const results = await processDocuments();
         await addCronJobLog();
