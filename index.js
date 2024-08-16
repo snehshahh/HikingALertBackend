@@ -89,9 +89,10 @@ async function processDocuments() {
             const docData = doc.data();
             const returnTimestamp = docData.ReturnTimestamp?.toDate(); // Convert Firestore Timestamp to Date
             const isAlertSent = docData.isAlertSent;
+            const isTripComplete=docData.IsTripCompleted;
             const userId = docData.UserId; // Get the UserId from the document
 
-            if (!isAlertSent && returnTimestamp) {
+            if (!isAlertSent && returnTimestamp && !IsTripCompleted) {
                 // Convert ReturnTimestamp to UTC format using Luxon
                 const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
 
@@ -124,10 +125,6 @@ async function processDocuments() {
 
 async function addCronJobLog() {
     try {
-        await db.collection('CronJobLogs').add({
-            "CronJobLogs": "Success",
-            "TimeOfCronLog": DateTime.now().toISO()
-        });
 
         writeLog(`CronJob Success at: ${DateTime.now().toISO()}`);
     } catch (error) {
