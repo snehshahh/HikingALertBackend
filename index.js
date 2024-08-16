@@ -1,8 +1,7 @@
 const express = require('express');
 const admin = require('firebase-admin');
-const { DateTime } = require('luxon'); // Importing Luxon for date handling
+const { DateTime } = require('luxon'); // Import Luxon for date handling
 const fs = require('fs'); // Import fs module to write logs to a file
-const schedule = require('node-schedule'); // Import node-schedule
 
 // Initialize Firebase Admin SDK
 const serviceAccount = require('./hikingalert-260bf-firebase-adminsdk-8rkbb-24973cba1e.json');
@@ -21,8 +20,7 @@ function writeLog(message) {
 }
 
 // Function to send a notification, update the document, and log emergency contacts
-// Function to send a notification, update the document, and log emergency contacts
-async function sendNotificationAndUpdateDocuments(alertTableId) {
+async function sendNotificationAndUpdateDocuments(alertTableId, userId) {
     try {
         // Update the AlertTable document
         await db.collection('AlertTable').doc(alertTableId).update({
@@ -30,28 +28,38 @@ async function sendNotificationAndUpdateDocuments(alertTableId) {
             isAlertSent: true,
         });
 
-        // Retrieve the emergency contacts from EmergencyContactTable using the document ID
-        const emergencyContactsDoc = await db.collection('EmergencyContactTable').doc(alertTableId).get();
+        // Retrieve emergency contacts from UserTable using the userId
+        const userDoc = await db.collection('UserTable').doc(userId).get();
 
-        if (emergencyContactsDoc.exists) {
-            const emergencyContactsData = emergencyContactsDoc.data();
+        if (userDoc.exists) {
+            const userData = userDoc.data();
 
-            // Log for EmergencyContact1
-            if (emergencyContactsData.EmergencyContact1) {
-                writeLog(`Notification sent to ${emergencyContactsData.EmergencyContact1}  for AlertTable ID: ${alertTableId}`);
+            // Get emergency contact information
+            const emergencyContact1Name = userData.EmergencyContact1Name;
+            const emergencyContact1CountryCode = userData.EmergencyContact1CountryCode;
+            const EmergencyContact1 = userData.EmergencyContact1;
+            const emergencyContact2Name = userData.EmergencyContact2Name;
+            const emergencyContact2CountryCode = userData.EmergencyContact2CountryCode;
+            const EmergencyContact2 = userData.EmergencyContact2;
+
+            // Log for EmergencyContact1 (if exists)
+            if (emergencyContact1Name && emergencyContact1CountryCode) {
+                const fullEmergencyContact1 = `${emergencyContact1CountryCode}${EmergencyContact1}`;
+                writeLog(`Notification sent to ${fullEmergencyContact1} for AlertTable ID: ${alertTableId}`);
             }
 
-            // Log for EmergencyContact2
-            if (emergencyContactsData.EmergencyContact2) {
-                writeLog(`Notification sent to ${emergencyContactsData.EmergencyContact2.Name}  for AlertTable ID: ${alertTableId}`);
+            // Log for EmergencyContact2 (if exists)
+            if (emergencyContact2Name && emergencyContact2CountryCode) {
+                const fullEmergencyContact2 = `${emergencyContact2CountryCode}${EmergencyContact2}`;
+                writeLog(`Notification sent to ${fullEmergencyContact2} for AlertTable ID: ${alertTableId}`);
             }
 
-            // If no contacts found
-            if (!emergencyContactsData.EmergencyContact1 && !emergencyContactsData.EmergencyContact2) {
-                writeLog(`No emergency contacts found for AlertTable ID: ${alertTableId}`);
+            // Log if no contacts found
+            if (!emergencyContact1Name && !emergencyContact2Name) {
+                writeLog(`No emergency contacts found for User ID: ${userId} (AlertTable ID: ${alertTableId})`);
             }
         } else {
-            writeLog(`EmergencyContactTable document does not exist for AlertTable ID: ${alertTableId}`);
+            writeLog(`UserTable document does not exist for User ID: ${userId}`);
         }
 
         // Write a general log for notification sent
@@ -67,9 +75,6 @@ async function sendNotificationAndUpdateDocuments(alertTableId) {
     }
 }
 
-
-
-// Function to check document status and send notifications if necessary
 // Function to check document status and send notifications if necessary
 async function processDocuments() {
     const collectionName = 'AlertTable';
@@ -84,23 +89,23 @@ async function processDocuments() {
             const docData = doc.data();
             const returnTimestamp = docData.ReturnTimestamp?.toDate(); // Convert Firestore Timestamp to Date
             const isAlertSent = docData.isAlertSent;
+            const userId = docData.UserId; // Get the UserId from the document
 
             if (!isAlertSent && returnTimestamp) {
-                // Convert ReturnTimestamp to ISO format
-                const returnISO = DateTime.fromJSDate(returnTimestamp).toISO();
-                
-                // Get the current time in ISO format
-                const currentISO = DateTime.now().toISO();
+                // Convert ReturnTimestamp to UTC format using Luxon
+                const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
+
+                // Get the current UTC time
+                const currentUTC = DateTime.utc();
 
                 // Calculate the difference in minutes
-                const diffInMinutes = DateTime.fromISO(currentISO).diff(DateTime.fromISO(returnISO), 'minutes').minutes;
+                const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
 
-                // Check if the difference is more than 60 minutes
                 if (diffInMinutes > 60) {
                     writeLog(`Document ID ${doc.id} is late by ${diffInMinutes} minutes.`);
 
                     // Send notification and update the document
-                    await sendNotificationAndUpdateDocuments(doc.id);
+                    await sendNotificationAndUpdateDocuments(doc.id, userId);
                 }
             }
         }
@@ -116,7 +121,6 @@ async function processDocuments() {
         return 'Error'; // Return a simple error message
     }
 }
-
 
 async function addCronJobLog() {
     try {
@@ -138,6 +142,7 @@ async function addCronJobLog() {
 }
 
 // Schedule the job to run every 15 minutes
+const schedule = require('node-schedule');
 schedule.scheduleJob('*/15 * * * *', async () => {
     try {
         const results = await processDocuments();
