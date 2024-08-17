@@ -13,8 +13,6 @@ admin.initializeApp({
 const db = admin.firestore();
 const app = express();
 
-let lastExecutionTime = null; // Variable to store the last execution time
-
 // Log function to write logs to a file
 function writeLog(message) {
     const logMessage = `${DateTime.now().toISO()}: ${message}\n`;
@@ -144,7 +142,6 @@ async function addCronJobLog() {
 const schedule = require('node-schedule');
 schedule.scheduleJob('*/15 * * * *', async () => {
     try {
-        lastExecutionTime = DateTime.now().toISO(); // Update the last execution time
         const results = await processDocuments();
         await addCronJobLog();
         writeLog('Scheduled job executed successfully.');
@@ -155,11 +152,9 @@ schedule.scheduleJob('*/15 * * * *', async () => {
 
 app.get('/', async (req, res) => {
     try {
-        if (lastExecutionTime) {
-            return res.status(200).send(`Last execution time: ${lastExecutionTime}`);
-        } else {
-            return res.status(200).send('Scheduled job has not run yet.');
-        }
+        const results = await processDocuments();
+        await addCronJobLog();
+        return res.status(200).send('OK'); // Respond with a simple "OK" message
     } catch (error) {
         await db.collection('CronJobLogs').add({
             "CronJobLogs": "Failed",
