@@ -104,7 +104,7 @@ async function processDocuments() {
                 // Calculate the difference in minutes
                 const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
 
-                if (diffInMinutes > 60) {
+                if (diffInMinutes > 1) {
                     writeLog(`Document ID ${doc.id} is late by ${diffInMinutes} minutes.`);
 
                     // Send notification and update the document
