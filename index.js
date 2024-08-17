@@ -92,7 +92,7 @@ async function processDocuments() {
             const isTripComplete=docData.IsTripCompleted;
             const userId = docData.UserId; // Get the UserId from the document
 
-            if (!isAlertSent && returnTimestamp && !IsTripCompleted) {
+            if (!isAlertSent && returnTimestamp && !isTripComplete) {
                 // Convert ReturnTimestamp to UTC format using Luxon
                 const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
 
