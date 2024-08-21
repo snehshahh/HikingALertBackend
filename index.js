@@ -313,6 +313,10 @@ async function processDocuments() {
 
 async function addCronJobLog() {
     try {
+        await db.collection('CronJobLogs').add({
+            CronJobLogs: 'Success',
+            TimeOfCronLog: DateTime.now(),
+        });
 
         writeLog(`CronJob Success at: ${DateTime.now().toISO()}`);
     } catch (error) {
