@@ -280,36 +280,45 @@ async function processDocuments() {
         // Process each document in AlertTable
         for (const doc of snapshot.docs) {
             const docData = doc.data();
-            const returnTimestamp = docData.ReturnTimestamp?.toDate(); // Convert Firestore Timestamp to Date
-            const isAlertSent = docData.isAlertSent;
-            const isTripComplete = docData.IsTripCompleted;
-            const userId = docData.UserId; // Get the UserId from the document
-            const isAlertSentToUser = docData.isAlertSentToUser || false; // Get the UserId from the document
+            const returnTimestamp = docData.ReturnTimestamp?.toDate();
+            const userId = docData.UserId;
+            const isAlertSentToUser = docData.isAlertSentToUser || false;
             const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
             const currentUTC = DateTime.utc();
 
-            if (!isAlertSent && !isTripComplete && !isAlertSentToUser && returnUTC < currentUTC) {
-                await sendNotificationAndUpdateDocuments(doc.id, userId, 1, doc);
+            if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
+                // Lock the document by setting a flag immediately
+                await db.collection('AlertTable').doc(doc.id).update({ isProcessing: true });
+
+                try {
+                    await sendNotificationAndUpdateDocuments(doc.id, userId, 1, doc);
+                } finally {
+                    // Remove the lock after processing
+                    await db.collection('AlertTable').doc(doc.id).update({ isProcessing: false });
+                }
             }
 
-            if (!isAlertSent && isAlertSentToUser && !isTripComplete && returnUTC < currentUTC) {
+            if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
                 const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
                 if (diffInMinutes > 60) {
-                    writeLog(`Document ID ${doc.id} is late by ${diffInMinutes} minutes.`);
+                    await db.collection('AlertTable').doc(doc.id).update({ isProcessing: true });
 
-                    // Send notification and update the document
-                    await sendNotificationAndUpdateDocuments(doc.id, userId, 2, doc);
+                    try {
+                        await sendNotificationAndUpdateDocuments(doc.id, userId, 2, doc);
+                    } finally {
+                        await db.collection('AlertTable').doc(doc.id).update({ isProcessing: false });
+                    }
                 }
             }
         }
 
-        return 'OK'; // Return a simple message indicating success
+        return 'OK';
     } catch (error) {
-       
         writeLog(`Error processing documents: ${error.message}`);
-        return 'Error'; // Return a simple error message
+        return 'Error';
     }
 }
+
 
 async function addCronJobLog() {
     try {
