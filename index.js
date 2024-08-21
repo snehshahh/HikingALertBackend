@@ -323,7 +323,7 @@ async function addCronJobLog() {
 
 // Schedule the job to run every 15 minutes
 const schedule = require('node-schedule');
-schedule.scheduleJob('*/1 * * * *', async () => {
+schedule.scheduleJob('*/15 * * * *', async () => {
     try {
         const results = await processDocuments();
         await addCronJobLog();
