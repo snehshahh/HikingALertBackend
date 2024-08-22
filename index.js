@@ -137,7 +137,7 @@ async function sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId,
           },
           {
               headers: {
-                  Authorization: 'Bearer EAB0APuaKg4ABO5ZCf5jVcvt3Pl8eZBXRN9xGIlRO0unx5OWezZARHQ4ZAzmRUYXLbGnqVSohNE80Kb1zpAEPHHGn3pVyZCU4Y4BNewBI2elmhawairhAFrMOWf1t7avsZBOFy4ZBhxijBCJx8o9etANZCUb28C2CFlIbHKyLRPRm4ZB2ji2KmA0aY2F1Q4TUTQLe0cPAWjvPeQzNrtfvjjvcZD',
+                  Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
                   'Content-Type': 'application/json'
               }
           }
@@ -170,7 +170,7 @@ async function sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId,
           },
           {
               headers: {
-                  Authorization: 'Bearer EAB0APuaKg4ABO5ZCf5jVcvt3Pl8eZBXRN9xGIlRO0unx5OWezZARHQ4ZAzmRUYXLbGnqVSohNE80Kb1zpAEPHHGn3pVyZCU4Y4BNewBI2elmhawairhAFrMOWf1t7avsZBOFy4ZBhxijBCJx8o9etANZCUb28C2CFlIbHKyLRPRm4ZB2ji2KmA0aY2F1Q4TUTQLe0cPAWjvPeQzNrtfvjjvcZD',
+                  Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
                   'Content-Type': 'application/json'
               }
           }
@@ -202,7 +202,7 @@ async function sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId,
               },
               {
                   headers: {
-                      Authorization: 'Bearer EAB0APuaKg4ABO5ZCf5jVcvt3Pl8eZBXRN9xGIlRO0unx5OWezZARHQ4ZAzmRUYXLbGnqVSohNE80Kb1zpAEPHHGn3pVyZCU4Y4BNewBI2elmhawairhAFrMOWf1t7avsZBOFy4ZBhxijBCJx8o9etANZCUb28C2CFlIbHKyLRPRm4ZB2ji2KmA0aY2F1Q4TUTQLe0cPAWjvPeQzNrtfvjjvcZD',
+                      Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
                       'Content-Type': 'application/json'
                   }
               }
@@ -262,7 +262,7 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
           },
           {
               headers: {
-                  Authorization: 'Bearer EAB0APuaKg4ABO5ZCf5jVcvt3Pl8eZBXRN9xGIlRO0unx5OWezZARHQ4ZAzmRUYXLbGnqVSohNE80Kb1zpAEPHHGn3pVyZCU4Y4BNewBI2elmhawairhAFrMOWf1t7avsZBOFy4ZBhxijBCJx8o9etANZCUb28C2CFlIbHKyLRPRm4ZB2ji2KmA0aY2F1Q4TUTQLe0cPAWjvPeQzNrtfvjjvcZD',
+                  Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
                   'Content-Type': 'application/json',
               },
           }
