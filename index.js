@@ -33,40 +33,47 @@ function writeLog(message) {
 }
 
 async function sendNotificationAndUpdateDocuments(alertTableId, userId, eventId, alertDoc) {
-    try {
-        const userDoc = await db.collection('UserTable').doc(userId).get();
-        if (userDoc.exists) {
-            if (eventId == 2) {
-                const res = await sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId, alertTableId);
-                if (res) {
-                    await db.collection('AlertTable').doc(alertTableId).update({
-                        AlertedTimestamp: new Date(),
-                        isAlertSent: true,
-                    });
-                }
-            } else {
-                const res = await sendWhatsAppMessageToUser(userDoc, alertDoc, userId, alertTableId);
-                if (res) {
-                    await db.collection('AlertTable').doc(alertTableId).update({
-                        UserAlertTimeStamp: new Date(),
-                        isAlertSentToUser: true,
-                    });
-                }
-            }
-        }
+  try {
+      const userDoc = await db.collection('UserTable').doc(userId).get();
+      if (userDoc.exists) {
+          let res = false;
+          if (eventId === 2) {
+              // Check if messages have already been sent to emergency contacts
+              if (!alertDoc.data().isAlertSent) {
+                  res = await sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId, alertTableId);
+                  if (res) {
+                      await db.collection('AlertTable').doc(alertTableId).update({
+                          AlertedTimestamp: new Date(),
+                          isAlertSent: true
+                      });
+                  }
+              }
+          } else {
+              // Check if the message has already been sent to the user
+              if (!alertDoc.data().isAlertSentToUser) {
+                  res = await sendWhatsAppMessageToUser(userDoc, alertDoc, userId, alertTableId);
+                  if (res) {
+                      await db.collection('AlertTable').doc(alertTableId).update({
+                          UserAlertTimeStamp: new Date(),
+                          isAlertSentToUser: true, // Mark user alert as sent
+                      });
+                  }
+              }
+          }
+      }
 
-        // Write a general log for notification sent
-        writeLog(`Notification sent and document updated for AlertTable ID: ${alertTableId}`);
-    } catch (error) {
-        // Log error in Firebase and to a log file
-        await db.collection('CronJobLogs').add({
-            CronJobLogs: 'Failed',
-            TimeOfCronLog: DateTime.now().toISO(),
-            Error: error.message, // Log the error message
-        });
-        writeLog(`Error updating document ${alertTableId}: ${error.message}`);
-        throw error; // Re-throw to be caught by the calling function
-    } 
+      // Write a general log for notification sent
+      writeLog(`Notification sent and document updated for AlertTable ID: ${alertTableId}`);
+  } catch (error) {
+      // Log error in Firebase and to a log file
+      await db.collection('CronJobLogs').add({
+          CronJobLogs: 'Failed',
+          TimeOfCronLog: DateTime.now().toISO(),
+          Error: error.message,
+      });
+      writeLog(`Error updating document ${alertTableId}: ${error.message}`);
+      throw error; // Re-throw to be caught
+  }
 }
 
 async function sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId, alertTableId) {
@@ -260,40 +267,40 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
 
 // Function to check document status and send notifications if necessary
 async function processDocuments() {
-    const collectionName = 'AlertTable';
+  const collectionName = 'AlertTable';
 
-    try {
-        const snapshot = await db.collection(collectionName)
-            .where('isAlertSent', '==', false)
-            .where('IsTripCompleted', '==', false)
-            .get();
+  try {
+      const snapshot = await db.collection(collectionName)
+          .where('isAlertSent', '==', false)
+          .where('IsTripCompleted', '==', false)
+          .get();
 
-        // Process each document in AlertTable
-        for (const doc of snapshot.docs) {
-            const docData = doc.data();
-            const returnTimestamp = docData.ReturnTimestamp?.toDate();
-            const userId = docData.UserId;
-            const isAlertSentToUser = docData.isAlertSentToUser || false;
-            const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
-            const currentUTC = DateTime.utc();
+      // Process each document in AlertTable
+      for (const doc of snapshot.docs) {
+          const docData = doc.data();
+          const returnTimestamp = docData.ReturnTimestamp?.toDate();
+          const userId = docData.UserId;
+          const isAlertSentToUser = docData.isAlertSentToUser || false;
+          const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
+          const currentUTC = DateTime.utc();
 
-            if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
-                await sendNotificationAndUpdateDocuments(doc.id, userId, 1, doc);
-            }
+          if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
+              await sendNotificationAndUpdateDocuments(doc.id, userId, 1, doc);
+          }
 
-            if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
-                const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
-                if (diffInMinutes > 15) {
-                    await sendNotificationAndUpdateDocuments(doc.id, userId, 2, doc);
-                }
-            }
-        }
+          if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
+              const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
+              if (diffInMinutes > 15) {
+                  await sendNotificationAndUpdateDocuments(doc.id, userId, 2, doc);
+              }
+          }
+      }
 
-        return 'OK';
-    } catch (error) {
-        writeLog(`Error processing documents: ${error.message}`);
-        return 'Error';
-    }
+      return 'OK';
+  } catch (error) {
+      writeLog(`Error processing documents: ${error.message}`);
+      return 'Error';
+  }
 }
 
 async function addCronJobLog() {
@@ -310,7 +317,7 @@ async function addCronJobLog() {
 
 // Schedule the job to run every 15 minutes
 const schedule = require('node-schedule');
-schedule.scheduleJob('*/5* * * *', async () => {
+schedule.scheduleJob('*/5 * * * *', async () => {
     try {
         const results = await processDocuments();
         await addCronJobLog();
