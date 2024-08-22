@@ -35,14 +35,29 @@ function writeLog(message) {
 async function sendNotificationAndUpdateDocuments(alertTableId, userId, eventId, alertDoc) {
   try {
       const userDoc = await db.collection('UserTable').doc(userId).get();
-      if (userDoc.exists) {
+      if (!userDoc.exists) {
+          throw new Error(`User document with ID ${userId} does not exist`);
+      }
+
+      // Use a transaction to ensure consistency
+      await db.runTransaction(async (transaction) => {
+          const alertRef = db.collection('AlertTable').doc(alertTableId);
+          const alertSnapshot = await transaction.get(alertRef);
+
+          if (!alertSnapshot.exists) {
+              throw new Error(`Alert document with ID ${alertTableId} does not exist`);
+          }
+
+          const alertData = alertSnapshot.data();
+
           let res = false;
+
           if (eventId === 2) {
               // Check if messages have already been sent to emergency contacts
-              if (!alertDoc.data().isAlertSent) {
-                  res = await sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId, alertTableId);
+              if (!alertData.isAlertSent) {
+                  res = await sendWhatsAppMessageToEmergencyContacts(userDoc, alertSnapshot, userId, alertTableId);
                   if (res) {
-                      await db.collection('AlertTable').doc(alertTableId).update({
+                      transaction.update(alertRef, {
                           AlertedTimestamp: new Date(),
                           isAlertSent: true
                       });
@@ -50,17 +65,17 @@ async function sendNotificationAndUpdateDocuments(alertTableId, userId, eventId,
               }
           } else {
               // Check if the message has already been sent to the user
-              if (!alertDoc.data().isAlertSentToUser) {
-                  res = await sendWhatsAppMessageToUser(userDoc, alertDoc, userId, alertTableId);
+              if (!alertData.isAlertSentToUser) {
+                  res = await sendWhatsAppMessageToUser(userDoc, alertSnapshot, userId, alertTableId);
                   if (res) {
-                      await db.collection('AlertTable').doc(alertTableId).update({
+                      transaction.update(alertRef, {
                           UserAlertTimeStamp: new Date(),
-                          isAlertSentToUser: true, // Mark user alert as sent
+                          isAlertSentToUser: true
                       });
                   }
               }
           }
-      }
+      });
 
       // Write a general log for notification sent
       writeLog(`Notification sent and document updated for AlertTable ID: ${alertTableId}`);
@@ -75,6 +90,7 @@ async function sendNotificationAndUpdateDocuments(alertTableId, userId, eventId,
       throw error; // Re-throw to be caught
   }
 }
+
 
 async function sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId, alertTableId) {
   try {
@@ -243,26 +259,36 @@ async function processDocuments() {
           .where('IsTripCompleted', '==', false)
           .get();
 
-      // Process each document in AlertTable
-      for (const doc of snapshot.docs) {
-          const docData = doc.data();
-          const returnTimestamp = docData.ReturnTimestamp?.toDate();
-          const userId = docData.UserId;
-          const isAlertSentToUser = docData.isAlertSentToUser || false;
-          const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
-          const currentUTC = DateTime.utc();
-
-          if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
-              await sendNotificationAndUpdateDocuments(doc.id, userId, 1, doc);
-          }
-
-          if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
-              const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
-              if (diffInMinutes > 15) {
-                  await sendNotificationAndUpdateDocuments(doc.id, userId, 2, doc);
+      // Create an array of promises
+      const promises = snapshot.docs.map(doc => {
+          return db.runTransaction(async (transaction) => {
+              const docRef = db.collection(collectionName).doc(doc.id);
+              const docData = (await transaction.get(docRef)).data();
+              if (!docData) {
+                  throw new Error(`Document ${doc.id} not found`);
               }
-          }
-      }
+
+              const returnTimestamp = docData.ReturnTimestamp?.toDate();
+              const userId = docData.UserId;
+              const isAlertSentToUser = docData.isAlertSentToUser || false;
+              const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
+              const currentUTC = DateTime.utc();
+
+              if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
+                  await sendNotificationAndUpdateDocuments(transaction, docRef, userId, 1, docData);
+              }
+
+              if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
+                  const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
+                  if (diffInMinutes > 15) {
+                      await sendNotificationAndUpdateDocuments(transaction, docRef, userId, 2, docData);
+                  }
+              }
+          });
+      });
+
+      // Wait for all promises to complete
+      await Promise.all(promises);
 
       return 'OK';
   } catch (error) {
@@ -270,6 +296,7 @@ async function processDocuments() {
       return 'Error';
   }
 }
+
 
 async function addCronJobLog() {
     try {
