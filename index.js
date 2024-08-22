@@ -280,7 +280,7 @@ async function processDocuments() {
 
               if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
                   const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
-                  if (diffInMinutes > 15) {
+                  if (diffInMinutes > 60) {
                       await sendNotificationAndUpdateDocuments(transaction, docRef, userId, 2, docData);
                   }
               }
@@ -312,7 +312,7 @@ async function addCronJobLog() {
 
 // Schedule the job to run every 15 minutes
 const schedule = require('node-schedule');
-schedule.scheduleJob('*/5 * * * *', async () => {
+schedule.scheduleJob('*/15 * * * *', async () => {
     try {
         const results = await processDocuments();
         await addCronJobLog();
