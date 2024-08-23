@@ -32,24 +32,44 @@ function writeLog(message) {
     fs.appendFileSync('cronjob.log', logMessage); // Write log message to cronjob.log
 }
 
-async function sendNotificationAndUpdateDocuments(alertTableId, userId, eventId, alertDoc) {
+async function sendNotificationAndUpdateDocuments(transaction, alertTableId, userId, eventId, alertDoc) {
     try {
         const userDoc = await db.collection('UserTable').doc(userId).get();
-        if (userDoc.exists) {
-            if (eventId == 2) {
-                const res = await sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId, alertTableId);
+        if (!userDoc.exists) {
+            throw new Error(`User document with ID ${userId} does not exist`);
+        }
+
+        // Use a transaction to ensure consistency
+        const alertRef = db.collection('AlertTable').doc(alertTableId);
+        const alertSnapshot = await transaction.get(alertRef);
+
+        if (!alertSnapshot.exists) {
+            throw new Error(`Alert document with ID ${alertTableId} does not exist`);
+        }
+
+        const alertData = alertSnapshot.data();
+
+        let res = false;
+
+        if (eventId === 2) {
+            // Check if messages have already been sent to emergency contacts
+            if (!alertData.isAlertSent) {
+                res = await sendWhatsAppMessageToEmergencyContacts(userDoc, alertSnapshot, userId, alertTableId);
                 if (res) {
-                    await db.collection('AlertTable').doc(alertTableId).update({
+                    transaction.update(alertRef, {
                         AlertedTimestamp: new Date(),
-                        isAlertSent: true,
+                        isAlertSent: true
                     });
                 }
-            } else {
-                const res = await sendWhatsAppMessageToUser(userDoc, alertDoc, userId, alertTableId);
+            }
+        } else {
+            // Check if the message has already been sent to the user
+            if (!alertData.isAlertSentToUser) {
+                res = await sendWhatsAppMessageToUser(userDoc, alertSnapshot, userId, alertTableId);
                 if (res) {
-                    await db.collection('AlertTable').doc(alertTableId).update({
+                    transaction.update(alertRef, {
                         UserAlertTimeStamp: new Date(),
-                        isAlertSentToUser: true,
+                        isAlertSentToUser: true
                     });
                 }
             }
@@ -59,147 +79,137 @@ async function sendNotificationAndUpdateDocuments(alertTableId, userId, eventId,
         writeLog(`Notification sent and document updated for AlertTable ID: ${alertTableId}`);
     } catch (error) {
         // Log error in Firebase and to a log file
-        await db.collection('CronJobLogs').add({
-            CronJobLogs: 'Failed',
-            TimeOfCronLog: DateTime.now().toISO(),
-            Error: error.message, // Log the error message
-        });
+        // await db.collection('CronJobLogs').add({
+        //     CronJobLogs: 'Failed',
+        //     TimeOfCronLog: DateTime.now().toISO(),
+        //     Error: error.message,
+        // });
         writeLog(`Error updating document ${alertTableId}: ${error.message}`);
-        throw error; // Re-throw to be caught by the calling function
-    } 
+        throw error; // Re-throw to be caught
+    }
 }
+
 
 async function sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId, alertTableId) {
     try {
-        // Get emergency contact information
-        const userData = userDoc.data();
-        const alertData = alertDoc.data();
-        const userName = userData.FirstName;
-        const lastName = userData.LastName;
-        const userCountryCode = userData.UserCountryCode;
-        const userWsNo = userData.WhatsAppNo;
-        const fullUserContact1 = `${userCountryCode.replace('+', '')}${userWsNo}`;
-        const tripName = alertData.TripName;
-        const tripUrl = `${process.env.VERCEL_APP_URL}/trip?userId=${userId}&alertTableId=${alertTableId}`
-        const expectedReturnTime = alertData.ReturnTimestamp?.toDate();
-        const emergencyContact1Name = userData.EmergencyContact1Name;
-        const emergencyContact1CountryCode = userData.EmergencyContact1CountryCode;
-        const emergencyContact1 = userData.EmergencyContact1;
-        const emergencyContact2Name = userData.EmergencyContact2Name;
-        const emergencyContact2CountryCode = userData.EmergencyContact2CountryCode;
-        const emergencyContact2 = userData.EmergencyContact2;
-        const fullEmergencyContact1 = `${emergencyContact1CountryCode.replace('+', '')}${emergencyContact1}`;
-        const fullEmergencyContact2 = `${emergencyContact2CountryCode.replace('+', '')}${emergencyContact2}`;
-
-        const response = await axios.post(
-            process.env.FACEBOOK_GRAPH_API_URL,
-            {
-                messaging_product: "whatsapp",
-                to: fullEmergencyContact1,
-                type: "template",
-                template: {
-                    name: "emergency_alert_detailed",
-                    language: {
-                        code: "en"
-                    },
-                    components: [
-                        {
-                            type: "body",
-                            parameters: [
-                                { type: "text", text: userName },
-                                { type: "text", text: lastName },
-                                { type: "text", text: expectedReturnTime },
-                                { type: "text", text: tripName },
-                                { type: "text", text: tripUrl },
-                                { type: "text", text: "https://rushlabs.com/alerts" }
-                            ]
-                        }
-                    ]
-                }
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-        const response2 = await axios.post(
-            process.env.FACEBOOK_GRAPH_API_URL,
-            {
-                messaging_product: "whatsapp",
-                to: fullEmergencyContact2,
-                type: "template",
-                template: {
-                    name: "emergency_alert_detailed",
-                    language: {
-                        code: "en"
-                    },
-                    components: [
-                        {
-                            type: "body",
-                            parameters: [
-                                { type: "text", text: userName },
-                                { type: "text", text: lastName },
-                                { type: "text", text: expectedReturnTime },
-                                { type: "text", text: tripName },
-                                { type: "text", text: tripUrl },
-                                { type: "text", text: "https://rushlabs.com/alerts" }
-                            ]
-                        }
-                    ]
-                }
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        if (response2.status === 200 && response.status === 200) {
-            const response3 = await axios.post(
-                process.env.FACEBOOK_GRAPH_API_URL,
-                {
-                    messaging_product: "whatsapp",
-                    to: fullUserContact1,
-                    type: "template",
-                    template: {
-                        name: "emergency_alert_sent",
-                        language: {
-                            code: "en"
-                        },
-                        components: [
-                            {
-                                type: "body",
-                                parameters: [
-                                    { type: "text", text: userName },
-                                    { type: "text", text: tripName },
-                                    { type: "text", text: tripUrl }
-                                ]
-                            }
-                        ]
-                    }
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-
-            if (response3.status === 200) {
-                console.log('Emergency alert sent successfully:', response.data);
-            }
+      // Extract user and alert data
+      const userData = userDoc.data();
+      const alertData = alertDoc.data();
+      const userName = userData.FirstName;
+      const lastName = userData.LastName;
+      const userCountryCode = userData.UserCountryCode;
+      const userWsNo = userData.WhatsAppNo;
+      const fullUserContact1 = `${userCountryCode.replace('+', '')}${userWsNo}`;
+      const tripName = alertData.TripName;
+      const tripUrl = `${process.env.VERCEL_APP_URL}/trip?userId=${userId}&alertTableId=${alertTableId}`;
+      const expectedReturnTime = alertData.ReturnTimestamp?.toDate();
+      
+      const emergencyContacts = [
+        {
+          name: userData.EmergencyContact1Name,
+          number: `${userData.EmergencyContact1CountryCode.replace('+', '')}${userData.EmergencyContact1}`,
+          isMessageSent: false // Control flag
+        },
+        {
+          name: userData.EmergencyContact2Name,
+          number: `${userData.EmergencyContact2CountryCode.replace('+', '')}${userData.EmergencyContact2}`,
+          isMessageSent: false // Control flag
         }
-        return true;
+      ];
+  
+      // Send message to emergency contacts
+      for (const contact of emergencyContacts) {
+        if (!contact.isMessageSent) {
+          const response = await axios.post(
+            process.env.FACEBOOK_GRAPH_API_URL,
+            {
+              messaging_product: "whatsapp",
+              to: contact.number,
+              type: "template",
+              template: {
+                name: "emergency_alert_detailed",
+                language: {
+                  code: "en"
+                },
+                components: [
+                  {
+                    type: "body",
+                    parameters: [
+                      { type: "text", text: userName },
+                      { type: "text", text: lastName },
+                      { type: "text", text: expectedReturnTime}, // Convert to ISO string for readable format
+                      { type: "text", text: tripName },
+                      { type: "text", text: tripUrl },
+                      { type: "text", text: "https://rushlabs.com/alerts" }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          
+          if (response.status === 200) {
+            contact.isMessageSent = true; // Set flag to true after successful send
+          } else {
+            console.error(`Failed to send message to ${contact.name}: ${response.statusText}`);
+          }
+        }
+      }
+  
+      // Send message to user after emergency contacts
+      if (emergencyContacts.every(contact => contact.isMessageSent)) {
+        const responseToUser = await axios.post(
+          process.env.FACEBOOK_GRAPH_API_URL,
+          {
+            messaging_product: "whatsapp",
+            to: fullUserContact1,
+            type: "template",
+            template: {
+              name: "emergency_alert_sent",
+              language: {
+                code: "en"
+              },
+              components: [
+                {
+                  type: "body",
+                  parameters: [
+                    { type: "text", text: userName },
+                    { type: "text", text: tripName },
+                    { type: "text", text: tripUrl }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        if (responseToUser.status === 200) {
+          console.log('Emergency alert sent successfully to user:', responseToUser.data);
+        } else {
+          console.error('Failed to send emergency alert to user:', responseToUser.statusText);
+        }
+      }
+  
+      return true;
     } catch (error) {
-        writeLog(`Failed to send WhatsApp message to : ${error.message}`);
-        throw error;
+      writeLog(`Failed to send WhatsApp message: ${error.message}`);
+      throw error;
     }
-}
+  }
+  
+
 async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
     try {
         const userData = userDoc.data();
@@ -268,26 +278,35 @@ async function processDocuments() {
             .where('IsTripCompleted', '==', false)
             .get();
 
-        // Process each document in AlertTable
-        for (const doc of snapshot.docs) {
-            const docData = doc.data();
-            const returnTimestamp = docData.ReturnTimestamp?.toDate();
-            const userId = docData.UserId;
-            const isAlertSentToUser = docData.isAlertSentToUser || false;
-            const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
-            const currentUTC = DateTime.utc();
-
-            if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
-                await sendNotificationAndUpdateDocuments(doc.id, userId, 1, doc);
-            }
-
-            if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
-                const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
-                if (diffInMinutes > 15) {
-                    await sendNotificationAndUpdateDocuments(doc.id, userId, 2, doc);
+        // Create an array of promises
+        const promises = snapshot.docs.map(doc => {
+            return db.runTransaction(async (transaction) => {
+                const docRef = db.collection(collectionName).doc(doc.id);
+                const docData = (await transaction.get(docRef)).data();
+                if (!docData) {
+                    throw new Error(`Document ${doc.id} not found`);
                 }
-            }
-        }
+
+                const returnTimestamp = docData.ReturnTimestamp?.toDate();
+                const userId = docData.UserId;
+                const isAlertSentToUser = docData.isAlertSentToUser || false;
+                const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
+                const currentUTC = DateTime.utc();
+
+                if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
+                    await sendNotificationAndUpdateDocuments(transaction, doc.id, userId, 1, docData);
+                }
+                if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
+                    const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
+                    if (diffInMinutes > 60) {
+                        await sendNotificationAndUpdateDocuments(transaction, doc.id, userId, 2, docData);
+                    }
+                }
+            });
+        });
+
+        // Wait for all promises to complete
+        await Promise.all(promises);
 
         return 'OK';
     } catch (error) {
@@ -295,6 +314,7 @@ async function processDocuments() {
         return 'Error';
     }
 }
+
 
 async function addCronJobLog() {
     try {
@@ -310,7 +330,7 @@ async function addCronJobLog() {
 
 // Schedule the job to run every 15 minutes
 const schedule = require('node-schedule');
-schedule.scheduleJob('*/5 * * * *', async () => {
+schedule.scheduleJob('*/15 * * * *', async () => {
     try {
         const results = await processDocuments();
         await addCronJobLog();
