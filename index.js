@@ -32,61 +32,63 @@ function writeLog(message) {
     fs.appendFileSync('cronjob.log', logMessage); // Write log message to cronjob.log
 }
 
-async function sendNotificationAndUpdateDocuments(transaction, alertTableId, userId, eventId, alertDoc) {
-    try {
-        const userDoc = await db.collection('UserTable').doc(userId).get();
-        if (!userDoc.exists) {
-            throw new Error(`User document with ID ${userId} does not exist`);
-        }
+async function sendNotificationAndUpdateDocuments(alertTableId, userId, eventId, alertDoc) {
+  try {
+      const userDoc = await db.collection('UserTable').doc(userId).get();
+      if (!userDoc.exists) {
+          throw new Error(`User document with ID ${userId} does not exist`);
+      }
 
-        // Use a transaction to ensure consistency
-        const alertRef = db.collection('AlertTable').doc(alertTableId);
-        const alertSnapshot = await transaction.get(alertRef);
+      // Use a transaction to ensure consistency
+      await db.runTransaction(async (transaction) => {
+          const alertRef = db.collection('AlertTable').doc(alertTableId);
+          const alertSnapshot = await transaction.get(alertRef);
 
-        if (!alertSnapshot.exists) {
-            throw new Error(`Alert document with ID ${alertTableId} does not exist`);
-        }
+          if (!alertSnapshot.exists) {
+              throw new Error(`Alert document with ID ${alertTableId} does not exist`);
+          }
 
-        const alertData = alertSnapshot.data();
+          const alertData = alertSnapshot.data();
 
-        let res = false;
+          let res = false;
 
-        if (eventId === 2) {
-            // Check if messages have already been sent to emergency contacts
-            if (!alertData.isAlertSent) {
-                res = await sendWhatsAppMessageToEmergencyContacts(userDoc, alertSnapshot, userId, alertTableId);
-                if (res) {
-                    transaction.update(alertRef, {
-                        AlertedTimestamp: new Date(),
-                        isAlertSent: true
-                    });
-                }
-            }
-        } else {
-            // Check if the message has already been sent to the user
-            if (!alertData.isAlertSentToUser) {
-                res = await sendWhatsAppMessageToUser(userDoc, alertSnapshot, userId, alertTableId);
-                if (res) {
-                    transaction.update(alertRef, {
-                        UserAlertTimeStamp: new Date(),
-                        isAlertSentToUser: true
-                    });
-                }
-            }
-        }
+          if (eventId === 2) {
+              // Check if messages have already been sent to emergency contacts
+              if (!alertData.isAlertSent) {
+                  res = await sendWhatsAppMessageToEmergencyContacts(userDoc, alertSnapshot, userId, alertTableId);
+                  if (res) {
+                      transaction.update(alertRef, {
+                          AlertedTimestamp: new Date(),
+                          isAlertSent: true
+                      });
+                  }
+              }
+          } else {
+              // Check if the message has already been sent to the user
+              if (!alertData.isAlertSentToUser) {
+                  res = await sendWhatsAppMessageToUser(userDoc, alertSnapshot, userId, alertTableId);
+                  if (res) {
+                      transaction.update(alertRef, {
+                          UserAlertTimeStamp: new Date(),
+                          isAlertSentToUser: true
+                      });
+                  }
+              }
+          }
+      });
 
-        // Write a general log for notification sent
-        writeLog(`Notification sent and document updated for AlertTable ID: ${alertTableId}`);
-    } catch (error) {
-        // Log error in Firebase and to a log file
-        // await db.collection('CronJobLogs').add({
-        //     CronJobLogs: 'Failed',
-        //     TimeOfCronLog: DateTime.now().toISO(),
-        //     Error: error.message,
-        // });
-        writeLog(`Error updating document ${alertTableId}: ${error.message}`);
-        throw error; // Re-throw to be caught
-    }
+      // Write a general log for notification sent
+      writeLog(`Notification sent and document updated for AlertTable ID: ${alertTableId}`);
+  } catch (error) {
+      // Log error in Firebase and to a log file
+      await db.collection('CronJobLogs').add({
+          CronJobLogs: 'Failed',
+          TimeOfCronLog: DateTime.now().toISO(),
+          Error: error.message,
+      });
+      writeLog(`Error updating document ${alertTableId}: ${error.message}`);
+      throw error; // Re-throw to be caught
+  }
 }
 
 
@@ -270,28 +272,28 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
 
 // Function to check document status and send notifications if necessary
 async function processDocuments() {
-    const collectionName = 'AlertTable';
+  const collectionName = 'AlertTable';
 
-    try {
-        const snapshot = await db.collection(collectionName)
-            .where('isAlertSent', '==', false)
-            .where('IsTripCompleted', '==', false)
-            .get();
+  try {
+      const snapshot = await db.collection(collectionName)
+          .where('isAlertSent', '==', false)
+          .where('IsTripCompleted', '==', false)
+          .get();
 
-        // Create an array of promises
-        const promises = snapshot.docs.map(doc => {
-            return db.runTransaction(async (transaction) => {
-                const docRef = db.collection(collectionName).doc(doc.id);
-                const docData = (await transaction.get(docRef)).data();
-                if (!docData) {
-                    throw new Error(`Document ${doc.id} not found`);
-                }
+      // Create an array of promises
+      const promises = snapshot.docs.map(doc => {
+          return db.runTransaction(async (transaction) => {
+              const docRef = db.collection(collectionName).doc(doc.id);
+              const docData = (await transaction.get(docRef)).data();
+              if (!docData) {
+                  throw new Error(`Document ${doc.id} not found`);
+              }
 
-                const returnTimestamp = docData.ReturnTimestamp?.toDate();
-                const userId = docData.UserId;
-                const isAlertSentToUser = docData.isAlertSentToUser || false;
-                const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
-                const currentUTC = DateTime.utc();
+              const returnTimestamp = docData.ReturnTimestamp?.toDate();
+              const userId = docData.UserId;
+              const isAlertSentToUser = docData.isAlertSentToUser || false;
+              const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
+              const currentUTC = DateTime.utc();
 
                 if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
                     await sendNotificationAndUpdateDocuments(transaction, doc.id, userId, 1, docData);
