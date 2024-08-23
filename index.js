@@ -304,10 +304,6 @@ async function processDocuments() {
                 }
             });
         });
-
-        // Wait for all promises to complete
-        await Promise.all(promises);
-
         return 'OK';
     } catch (error) {
         writeLog(`Error processing documents: ${error.message}`);
@@ -330,7 +326,7 @@ async function addCronJobLog() {
 
 // Schedule the job to run every 15 minutes
 const schedule = require('node-schedule');
-schedule.scheduleJob('*/15 * * * *', async () => {
+schedule.scheduleJob('*/5 * * * *', async () => {
     try {
         const results = await processDocuments();
         await addCronJobLog();
