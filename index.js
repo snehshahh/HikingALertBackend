@@ -274,22 +274,27 @@ async function processDocuments() {
               const returnUTC = DateTime.fromJSDate(returnTimestamp, { zone: 'utc' });
               const currentUTC = DateTime.utc();
 
-                if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
-                    await sendNotificationAndUpdateDocuments(transaction, doc.id, userId, 1, docData);
-                }
-                if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
-                    const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
-                    if (diffInMinutes > 60) {
-                        await sendNotificationAndUpdateDocuments(transaction, doc.id, userId, 2, docData);
-                    }
-                }
-            });
-        });
-        return 'OK';
-    } catch (error) {
-        writeLog(`Error processing documents: ${error.message}`);
-        return 'Error';
-    }
+              if (!docData.isAlertSent && !docData.IsTripCompleted && !isAlertSentToUser && returnUTC < currentUTC) {
+                  await sendNotificationAndUpdateDocuments(transaction, docRef, userId, 1, docData);
+              }
+
+              if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
+                  const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
+                  if (diffInMinutes > 60) {
+                      await sendNotificationAndUpdateDocuments(transaction, docRef, userId, 2, docData);
+                  }
+              }
+          });
+      });
+
+      // Wait for all promises to complete
+      await Promise.all(promises);
+
+      return 'OK';
+  } catch (error) {
+      writeLog(`Error processing documents: ${error.message}`);
+      return 'Error';
+  }
 }
 
 
