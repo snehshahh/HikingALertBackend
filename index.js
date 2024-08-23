@@ -276,7 +276,7 @@ async function processDocuments() {
                 processedDocs.push(doc.id);
             } else if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
                 const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
-                if (diffInMinutes > 60) {
+                if (diffInMinutes > 10) {
                     await sendNotificationAndUpdateDocuments(batch, doc.id, userId, 2, doc);
                     processedDocs.push(doc.id);
                 }
