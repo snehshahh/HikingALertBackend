@@ -93,8 +93,8 @@ async function sendNotificationAndUpdateDocuments(alertTableId, userId, eventId,
 
 
 async function sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId, alertTableId) {
-    try {
-      // Extract user and alert data
+  try {
+      // Get emergency contact information
       const userData = userDoc.data();
       const alertData = alertDoc.data();
       const userName = userData.FirstName;
@@ -105,112 +105,91 @@ async function sendWhatsAppMessageToEmergencyContacts(userDoc, alertDoc, userId,
       const tripName = alertData.TripName;
       const tripUrl = `${process.env.VERCEL_APP_URL}/trip?userId=${userId}&alertTableId=${alertTableId}`;
       const expectedReturnTime = alertData.ReturnTimestamp?.toDate();
-      
-      const emergencyContacts = [
-        {
-          name: userData.EmergencyContact1Name,
-          number: `${userData.EmergencyContact1CountryCode.replace('+', '')}${userData.EmergencyContact1}`,
-          isMessageSent: false // Control flag
-        },
-        {
-          name: userData.EmergencyContact2Name,
-          number: `${userData.EmergencyContact2CountryCode.replace('+', '')}${userData.EmergencyContact2}`,
-          isMessageSent: false // Control flag
-        }
-      ];
-  
-      // Send message to emergency contacts
-      for (const contact of emergencyContacts) {
-        if (!contact.isMessageSent) {
-          const response = await axios.post(
-            process.env.FACEBOOK_GRAPH_API_URL,
-            {
-              messaging_product: "whatsapp",
-              to: contact.number,
-              type: "template",
-              template: {
-                name: "emergency_alert_detailed",
-                language: {
-                  code: "en"
-                },
-                components: [
-                  {
-                    type: "body",
-                    parameters: [
-                      { type: "text", text: userName },
-                      { type: "text", text: lastName },
-                      { type: "text", text: expectedReturnTime}, // Convert to ISO string for readable format
-                      { type: "text", text: tripName },
-                      { type: "text", text: tripUrl },
-                      { type: "text", text: "https://rushlabs.com/alerts" }
-                    ]
+      const emergencyContact1Name = userData.EmergencyContact1Name;
+      const emergencyContact1CountryCode = userData.EmergencyContact1CountryCode;
+      const emergencyContact1 = userData.EmergencyContact1;
+      const emergencyContact2Name = userData.EmergencyContact2Name;
+      const emergencyContact2CountryCode = userData.EmergencyContact2CountryCode;
+      const emergencyContact2 = userData.EmergencyContact2;
+      const fullEmergencyContact1 = `${emergencyContact1CountryCode.replace('+', '')}${emergencyContact1}`;
+      const fullEmergencyContact2 = `${emergencyContact2CountryCode.replace('+', '')}${emergencyContact2}`;
+
+      // Function to send message
+      const sendMessage = async (to, templateName, parameters) => {
+          return axios.post(
+              process.env.FACEBOOK_GRAPH_API_URL,
+              {
+                  messaging_product: "whatsapp",
+                  to: to,
+                  type: "template",
+                  template: {
+                      name: templateName,
+                      language: { code: "en" },
+                      components: [
+                          {
+                              type: "body",
+                              parameters: parameters
+                          }
+                      ]
                   }
-                ]
-              }
-            },
-            {
-              headers: {
-                Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
-                'Content-Type': 'application/json'
-              }
-            }
-          );
-          
-          if (response.status === 200) {
-            contact.isMessageSent = true; // Set flag to true after successful send
-          } else {
-            console.error(`Failed to send message to ${contact.name}: ${response.statusText}`);
-          }
-        }
-      }
-  
-      // Send message to user after emergency contacts
-      if (emergencyContacts.every(contact => contact.isMessageSent)) {
-        const responseToUser = await axios.post(
-          process.env.FACEBOOK_GRAPH_API_URL,
-          {
-            messaging_product: "whatsapp",
-            to: fullUserContact1,
-            type: "template",
-            template: {
-              name: "emergency_alert_sent",
-              language: {
-                code: "en"
               },
-              components: [
-                {
-                  type: "body",
-                  parameters: [
-                    { type: "text", text: userName },
-                    { type: "text", text: tripName },
-                    { type: "text", text: tripUrl }
-                  ]
-                }
+              {
+                  headers: {
+                      Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
+                      'Content-Type': 'application/json'
+                  }
+              }
+          );
+      };
+
+      const response1 = await sendMessage(
+          fullEmergencyContact1,
+          "emergency_alert_detailed",
+          [
+              { type: "text", text: userName },
+              { type: "text", text: lastName },
+              { type: "text", text: expectedReturnTime },
+              { type: "text", text: tripName },
+              { type: "text", text: tripUrl },
+              { type: "text", text: "https://rushlabs.com/alerts" }
+          ]
+      );
+
+      const response2 = await sendMessage(
+          fullEmergencyContact2,
+          "emergency_alert_detailed",
+          [
+              { type: "text", text: userName },
+              { type: "text", text: lastName },
+              { type: "text", text: expectedReturnTime },
+              { type: "text", text: tripName },
+              { type: "text", text: tripUrl },
+              { type: "text", text: "https://rushlabs.com/alerts" }
+          ]
+      );
+
+      if (response1.status === 200 && response2.status === 200) {
+          const response3 = await sendMessage(
+              fullUserContact1,
+              "emergency_alert_sent",
+              [
+                  { type: "text", text: userName },
+                  { type: "text", text: tripName },
+                  { type: "text", text: tripUrl }
               ]
-            }
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.FACEBOOK_GRAPH_API_TOKEN}`,
-              'Content-Type': 'application/json'
-            }
+          );
+
+          if (response3.status === 200) {
+              console.log('Emergency alert sent successfully:', response1.data);
           }
-        );
-        
-        if (responseToUser.status === 200) {
-          console.log('Emergency alert sent successfully to user:', responseToUser.data);
-        } else {
-          console.error('Failed to send emergency alert to user:', responseToUser.statusText);
-        }
       }
-  
+
       return true;
-    } catch (error) {
+  } catch (error) {
       writeLog(`Failed to send WhatsApp message: ${error.message}`);
       throw error;
-    }
   }
-  
+}
 
 async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
     try {
