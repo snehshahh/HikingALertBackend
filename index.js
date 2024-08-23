@@ -161,6 +161,11 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
             }
             resolve(true);
         } catch (error) {
+            await db.collection('CronJobLogs').add({
+                CronJobLogs: 'Failed',
+                TimeOfCronLog: DateTime.now().toISO(),
+                Error: error.message, // Log the error message
+            });
             reject(error);
         }
     });
@@ -219,7 +224,6 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
             console.log('Message sent successfully:', response.data);
             writeLog(`WhatsApp message sent to ${response.data}`);
             if (response.status === 200) {
-                // Message sent successfully
                 resolve(response);
             } else {
                 // Handle unexpected response status
@@ -227,6 +231,11 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
                 reject(new Error(`Failed to send WhatsApp message. Status: ${response.statusText}`));
             }
         } catch (error) {
+            await db.collection('CronJobLogs').add({
+                CronJobLogs: 'Failed',
+                TimeOfCronLog: DateTime.now().toISO(),
+                Error: error.message, // Log the error message
+            });
             // Handle errors from the sendWhatsAppMessage function
             console.error(`Error sending WhatsApp message: ${error.message}`);
             reject(new Error(`Failed to send WhatsApp message: ${error.message}`));
@@ -276,7 +285,7 @@ async function processDocuments() {
                 processedDocs.push(doc.id);
             } else if (!docData.isAlertSent && isAlertSentToUser && !docData.IsTripCompleted && returnUTC < currentUTC) {
                 const diffInMinutes = currentUTC.diff(returnUTC, 'minutes').minutes;
-                if (diffInMinutes > 10) {
+                if (diffInMinutes > 60) {
                     await sendNotificationAndUpdateDocuments(batch, doc.id, userId, 2, doc);
                     processedDocs.push(doc.id);
                 }
@@ -292,6 +301,11 @@ async function processDocuments() {
 
         return 'OK';
     } catch (error) {
+        await db.collection('CronJobLogs').add({
+            CronJobLogs: 'Failed',
+            TimeOfCronLog: DateTime.now().toISO(),
+            Error: error.message, // Log the error message
+        });
         writeLog(`Error processing documents: ${error.message}`);
         return 'Error';
     } finally {
@@ -328,6 +342,11 @@ async function sendNotificationAndUpdateDocuments(batch, alertTableId, userId, e
             if (!alertDoc.isAlertSentToUser) {
                 res = await sendWhatsAppMessageToUser(userDoc, alertDoc);
                 if (res) {
+                    const messageId = res.data.messages[0].id; // Extract the message ID from the response
+                    batch.set(db.collection('WhatsAppLog').doc(messageId), {
+                        alertTableId,
+                        userId
+                      });
                     batch.update(alertRef, {
                         UserAlertTimeStamp: new Date(),
                         isAlertSentToUser: true
@@ -335,27 +354,26 @@ async function sendNotificationAndUpdateDocuments(batch, alertTableId, userId, e
                 }
             }
         }
-
         writeLog(`Notification sent for AlertTable ID: ${alertTableId}`);
     } catch (error) {
+        await db.collection('CronJobLogs').add({
+            CronJobLogs: 'Failed',
+            TimeOfCronLog: DateTime.now().toISO(),
+            Error: error.message, // Log the error message
+        });
         writeLog(`Error processing document ${alertTableId}: ${error.message}`);
         throw error;
     }
 }
 
-// Change the cron job schedule to run every 15 minutes
+
 schedule.scheduleJob('*/15 * * * *', async () => {
     try {
-        await processDocuments();
-        await addCronJobLog();
-        writeLog('Scheduled job executed successfully.');
-    } catch (error) {
-        writeLog(`Scheduled job failed: ${error.message}`);
-    }
-});
-schedule.scheduleJob('*/1 * * * *', async () => {
-    try {
         const results = await processDocuments();
+        await db.collection('CronJobLogs').add({
+            CronJobLogs: 'Success',
+            TimeOfCronLog: DateTime.now()
+        });
         writeLog('Scheduled job executed successfully.');
     } catch (error) {
         writeLog(`Scheduled job failed: ${error.message}`);
