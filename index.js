@@ -302,7 +302,6 @@ async function processDocuments() {
         } else {
             writeLog('No documents needed processing');
         }
-
         return 'OK';
     } catch (error) {
         const currentTime=Timestamp.now()
@@ -388,7 +387,7 @@ async function addCronJobLog() {
     }
 }
 
-schedule.scheduleJob('*/15 * * * *', async () => {
+schedule.scheduleJob('*/5 * * * *', async () => {
     try {
         const results = await processDocuments();
         await addCronJobLog();
