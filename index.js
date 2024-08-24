@@ -192,7 +192,7 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
                     to: fullUserContact1,
                     type: 'template',
                     template: {
-                        name: 'trip_safety_check_3',
+                        name: 'trip_safety_check_2',
                         language: {
                             code: 'en',
                         },
@@ -207,10 +207,6 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
                                     {
                                         type: 'text',
                                         text: tripName,
-                                    },
-                                    {
-                                        type: 'text',
-                                        text: alertDoc.id,
                                     },
                                 ],
                             },
