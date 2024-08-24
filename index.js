@@ -4,6 +4,7 @@ const { DateTime } = require('luxon');
 const fs = require('fs');
 const schedule = require('node-schedule');
 const axios = require('axios');
+const { Timestamp } = require('firebase-admin/firestore');
 require('dotenv').config();
 
 const serviceAccount = {
@@ -161,9 +162,11 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
             }
             resolve(true);
         } catch (error) {
+            const currentTime=Timestamp.now()
+
             await db.collection('CronJobLogs').add({
                 CronJobLogs: 'Failed',
-                TimeOfCronLog: DateTime.now().toISO(),
+                TimeOfCronLog: currentTime,
                 Error: error.message, // Log the error message
             });
             reject(error);
@@ -231,9 +234,10 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
                 reject(new Error(`Failed to send WhatsApp message. Status: ${response.statusText}`));
             }
         } catch (error) {
+            const currentTime=Timestamp.now()
             await db.collection('CronJobLogs').add({
                 CronJobLogs: 'Failed',
-                TimeOfCronLog: DateTime.now().toISO(),
+                TimeOfCronLog: currentTime,
                 Error: error.message, // Log the error message
             });
             // Handle errors from the sendWhatsAppMessage function
@@ -301,9 +305,11 @@ async function processDocuments() {
 
         return 'OK';
     } catch (error) {
+        const currentTime=Timestamp.now()
+
         await db.collection('CronJobLogs').add({
             CronJobLogs: 'Failed',
-            TimeOfCronLog: DateTime.now().toISO(),
+            TimeOfCronLog: currentTime,
             Error: error.message, // Log the error message
         });
         writeLog(`Error processing documents: ${error.message}`);
@@ -356,24 +362,36 @@ async function sendNotificationAndUpdateDocuments(batch, alertTableId, userId, e
         }
         writeLog(`Notification sent for AlertTable ID: ${alertTableId}`);
     } catch (error) {
-        await db.collection('CronJobLogs').add({
-            CronJobLogs: 'Failed',
-            TimeOfCronLog: DateTime.now().toISO(),
-            Error: error.message, // Log the error message
-        });
+        const currentTime=Timestamp.now()
+
+            await db.collection('CronJobLogs').add({
+                CronJobLogs: 'Failed',
+                TimeOfCronLog: currentTime,
+                Error: error.message, // Log the error message
+            });
         writeLog(`Error processing document ${alertTableId}: ${error.message}`);
         throw error;
     }
 }
 
+async function addCronJobLog() {
+    try {
+        const currentTime=Timestamp.now()
+
+        await db.collection('CronJobLogs').doc('LastExecution').set({
+            CronJobLogs: 'Success',
+            TimeOfCronLog: currentTime,
+        });
+        writeLog('Scheduled job executed successfully.');
+    } catch (error) {
+        writeLog(`Scheduled job failed: ${error.message}`);
+    }
+}
 
 schedule.scheduleJob('*/15 * * * *', async () => {
     try {
         const results = await processDocuments();
-        await db.collection('CronJobLogs').add({
-            CronJobLogs: 'Success',
-            TimeOfCronLog: DateTime.now()
-        });
+        await addCronJobLog();
         writeLog('Scheduled job executed successfully.');
     } catch (error) {
         writeLog(`Scheduled job failed: ${error.message}`);
