@@ -387,13 +387,23 @@ async function addCronJobLog() {
     }
 }
 
-schedule.scheduleJob('*/5 * * * *', async () => {
+schedule.scheduleJob('*/15 * * * *', async () => {
     try {
         const results = await processDocuments();
         await addCronJobLog();
         writeLog('Scheduled job executed successfully.');
     } catch (error) {
         writeLog(`Scheduled job failed: ${error.message}`);
+    }
+});
+
+app.get('/', async (req, res) => {
+    try {
+        const results = await processDocuments();
+        await addCronJobLog();
+        return res.status(200).send('OK'); // Respond with a simple "OK" message
+    } catch (error) {
+        return res.status(500).send('Error'); // Respond with a simple "Error" message
     }
 });
 
