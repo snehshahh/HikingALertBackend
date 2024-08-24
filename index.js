@@ -400,7 +400,7 @@ schedule.scheduleJob('*/15 * * * *', async () => {
 app.get('/', async (req, res) => {
     try {
         const results = await processDocuments();
-        console.log("SERVER JAGTEH RAHO!!!")
+        console.log("SERVER JAGTEH RAHO!!!");
         await addCronJobLog();
         return res.status(200).send('OK'); // Respond with a simple "OK" message
     } catch (error) {
