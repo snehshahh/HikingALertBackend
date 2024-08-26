@@ -76,8 +76,7 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
                                     { type: "text", text: fullUserContact1 },
                                     { type: "text", text: expectedReturnTime },
                                     { type: "text", text: tripName },
-                                    { type: "text", text: tripUrl },
-                                    { type: "text", text: "https://rushlabs.com/alerts" }
+                                    { type: "text", text: tripUrl }
                                 ]
                             }
                         ]
@@ -109,8 +108,7 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
                                     { type: "text", text: fullUserContact1 },
                                     { type: "text", text: expectedReturnTime },
                                     { type: "text", text: tripName },
-                                    { type: "text", text: tripUrl },
-                                    { type: "text", text: "https://rushlabs.com/alerts" }
+                                    { type: "text", text: tripUrl }
                                 ]
                             }
                         ]
