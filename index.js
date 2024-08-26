@@ -162,12 +162,11 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
             }
             resolve(true);
         } catch (error) {
-            const currentTime=Timestamp.now()
-
-            await db.collection('CronJobLogs').add({
-                CronJobLogs: 'Failed',
+            const currentTime = Timestamp.now()
+            await db.collection('CronJobLogs').doc('LastExecutionError').set({
+                CronJobLogs: 'Success',
                 TimeOfCronLog: currentTime,
-                Error: error.message, // Log the error message
+                ErrorMessage: error
             });
             reject(error);
         }
@@ -230,11 +229,11 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
                 reject(new Error(`Failed to send WhatsApp message. Status: ${response.statusText}`));
             }
         } catch (error) {
-            const currentTime=Timestamp.now()
-            await db.collection('CronJobLogs').add({
-                CronJobLogs: 'Failed',
+            const currentTime = Timestamp.now()
+            await db.collection('CronJobLogs').doc('LastExecutionError').set({
+                CronJobLogs: 'Success',
                 TimeOfCronLog: currentTime,
-                Error: error.message, // Log the error message
+                ErrorMessage: error
             });
             // Handle errors from the sendWhatsAppMessage function
             console.error(`Error sending WhatsApp message: ${error.message}`);
@@ -300,12 +299,11 @@ async function processDocuments() {
         }
         return 'OK';
     } catch (error) {
-        const currentTime=Timestamp.now()
-
-        await db.collection('CronJobLogs').add({
-            CronJobLogs: 'Failed',
+        const currentTime = Timestamp.now()
+        await db.collection('CronJobLogs').doc('LastExecutionError').set({
+            CronJobLogs: 'Success',
             TimeOfCronLog: currentTime,
-            Error: error.message, // Log the error message
+            ErrorMessage: error
         });
         writeLog(`Error processing documents: ${error.message}`);
         return 'Error';
@@ -347,7 +345,7 @@ async function sendNotificationAndUpdateDocuments(batch, alertTableId, userId, e
                     batch.set(db.collection('WhatsAppLog').doc(messageId), {
                         alertTableId,
                         userId
-                      });
+                    });
                     batch.update(alertRef, {
                         UserAlertTimeStamp: new Date(),
                         isAlertSentToUser: true
@@ -357,13 +355,12 @@ async function sendNotificationAndUpdateDocuments(batch, alertTableId, userId, e
         }
         writeLog(`Notification sent for AlertTable ID: ${alertTableId}`);
     } catch (error) {
-        const currentTime=Timestamp.now()
-
-            await db.collection('CronJobLogs').add({
-                CronJobLogs: 'Failed',
-                TimeOfCronLog: currentTime,
-                Error: error.message, // Log the error message
-            });
+        const currentTime = Timestamp.now()
+        await db.collection('CronJobLogs').doc('LastExecutionError').set({
+            CronJobLogs: 'Success',
+            TimeOfCronLog: currentTime,
+            ErrorMessage: error
+        });
         writeLog(`Error processing document ${alertTableId}: ${error.message}`);
         throw error;
     }
@@ -371,11 +368,10 @@ async function sendNotificationAndUpdateDocuments(batch, alertTableId, userId, e
 
 async function addCronJobLog() {
     try {
-        const currentTime=Timestamp.now()
-
+        const currentTime = Timestamp.now()
         await db.collection('CronJobLogs').doc('LastExecution').set({
             CronJobLogs: 'Success',
-            TimeOfCronLog: currentTime,
+            TimeOfCronLog: currentTime
         });
         writeLog('Scheduled job executed successfully.');
     } catch (error) {
@@ -383,7 +379,7 @@ async function addCronJobLog() {
     }
 }
 
-schedule.scheduleJob('*/15 * * * *', async () => {
+schedule.scheduleJob('*/5 * * * *', async () => {
     try {
         const results = await processDocuments();
         await addCronJobLog();
@@ -395,9 +391,7 @@ schedule.scheduleJob('*/15 * * * *', async () => {
 
 app.get('/', async (req, res) => {
     try {
-        const results = await processDocuments();
         console.log("SERVER JAGTEH RAHO!!!");
-        await addCronJobLog();
         return res.status(200).send('OK'); // Respond with a simple "OK" message
     } catch (error) {
         return res.status(500).send('Error'); // Respond with a simple "Error" message
