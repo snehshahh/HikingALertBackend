@@ -64,7 +64,7 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
                     to: fullEmergencyContact1,
                     type: "template",
                     template: {
-                        name: "emergency_alert_detailed",
+                        name: "emergency_alert_sent_beta",
                         language: {
                             code: "en"
                         },
@@ -73,7 +73,7 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
                                 type: "body",
                                 parameters: [
                                     { type: "text", text: userName },
-                                    { type: "text", text: lastName },
+                                    { type: "text", text: fullUserContact1 },
                                     { type: "text", text: expectedReturnTime },
                                     { type: "text", text: tripName },
                                     { type: "text", text: tripUrl },
@@ -97,7 +97,7 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
                     to: fullEmergencyContact2,
                     type: "template",
                     template: {
-                        name: "emergency_alert_detailed",
+                        name: "emergency_alert_sent_beta",
                         language: {
                             code: "en"
                         },
@@ -106,7 +106,7 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
                                 type: "body",
                                 parameters: [
                                     { type: "text", text: userName },
-                                    { type: "text", text: lastName },
+                                    { type: "text", text: fullUserContact1 },
                                     { type: "text", text: expectedReturnTime },
                                     { type: "text", text: tripName },
                                     { type: "text", text: tripUrl },
@@ -192,7 +192,7 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
                     to: fullUserContact1,
                     type: 'template',
                     template: {
-                        name: 'trip_safety_check_2',
+                        name: 'trip_safety_check_beta',
                         language: {
                             code: 'en',
                         },
