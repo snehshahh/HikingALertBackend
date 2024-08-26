@@ -40,14 +40,22 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
         try {
             const userData = userDoc.data();
             const alertData = alertDoc.data();
-            const userName = userData.FirstName;
+            const userName = userData.FullName;
             const lastName = userData.LastName;
             const userCountryCode = userData.UserCountryCode;
             const userWsNo = userData.WhatsAppNo;
             const fullUserContact1 = `${userCountryCode.replace('+', '')}${userWsNo}`;
             const tripName = alertData.TripName;
-            const tripUrl = `${process.env.VERCEL_APP_URL}/trip?userId=${userId}&alertTableId=${alertTableId}`
-            const expectedReturnTime = alertData.ReturnTimestamp?.toDate();
+            const tripUrl = `${process.env.VERCEL_APP_URL}/share?alertTableId=${alertTableId}`
+            const expectedReturnTime = alertData.ReturnTimestamp?.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric'
+              }).replace(/(\w{3})/, (month) => month.toUpperCase()) + ' • ' + new Date(BackAndSafeTime.seconds * 1000).toLocaleTimeString('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+              });;
             const emergencyContact1Name = userData.EmergencyContact1Name;
             const emergencyContact1CountryCode = userData.EmergencyContact1CountryCode;
             const emergencyContact1 = userData.EmergencyContact1;
@@ -180,7 +188,7 @@ async function sendWhatsAppMessageToUser(userDoc, alertDoc) {
         try {
             const userData = userDoc.data();
             const alertData = alertDoc.data();
-            const userName = userData.FirstName;
+            const userName = userData.FullName;
             const userCountryCode = userData.UserCountryCode;
             const userWsNo = userData.WhatsAppNo;
             const fullUserContact1 = `${userCountryCode.replace('+', '')}${userWsNo}`;
