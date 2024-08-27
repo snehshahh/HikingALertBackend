@@ -46,7 +46,7 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
             const userWsNo = userData.WhatsAppNo;
             const fullUserContact1 = `${userCountryCode.replace('+', '')}${userWsNo}`;
             const tripName = alertData.TripName;
-            const tripUrl = `${process.env.VERCEL_APP_URL}/share?alertTableId=${alertTableId}`
+            const tripUrl = `${process.env.VERCEL_APP_URL}/share/${alertTableId}`
             let expectedReturnTime = alertData.ReturnTimestamp?.toDate();
             if (expectedReturnTime) {
                 // Format the date to '27 AUG 2024 • 3:30 PM' in IST
