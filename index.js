@@ -47,8 +47,19 @@ async function notifyEmergencyContacts(userDoc, alertDoc, userId, alertTableId) 
             const fullUserContact1 = `${userCountryCode.replace('+', '')}${userWsNo}`;
             const tripName = alertData.TripName;
             const tripUrl = `${process.env.VERCEL_APP_URL}/share?alertTableId=${alertTableId}`
-            const expectedReturnTime = alertData.ReturnTimestamp?.toDate();
-            const emergencyContact1Name = userData.EmergencyContact1Name;
+            let expectedReturnTime = alertData.ReturnTimestamp?.toDate();
+            if (expectedReturnTime) {
+                // Format the date to '27 AUG 2024 • 3:30 PM' in IST
+                expectedReturnTime = new Intl.DateTimeFormat('en-GB', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true,
+                    timeZone: 'Asia/Kolkata'
+                }).format(expectedReturnTime).replace(',', ' •');
+            } const emergencyContact1Name = userData.EmergencyContact1Name;
             const emergencyContact1CountryCode = userData.EmergencyContact1CountryCode;
             const emergencyContact1 = userData.EmergencyContact1;
             const emergencyContact2Name = userData.EmergencyContact2Name;
